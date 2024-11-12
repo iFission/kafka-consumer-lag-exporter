@@ -8,6 +8,7 @@ import org.springframework.kafka.core.KafkaAdmin
 import org.springframework.stereotype.Service
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
+import kotlin.math.max
 
 @Service
 class KafkaLagService(
@@ -25,7 +26,7 @@ class KafkaLagService(
         val topicPartitions = getTopicPartitions(consumerGroup)
         topicPartitions.forEach { (tp, consumerOffset) ->
             val latestOffset = getLatestOffset(tp)
-            val lag = (latestOffset - consumerOffset).toDouble()
+            val lag = max((latestOffset - consumerOffset), 0).toDouble()
 
             val key = "${consumerGroup}_${tp.topic()}_${tp.partition()}"
 
