@@ -23,16 +23,5 @@ class KafkaConfig {
         )
         return KafkaAdmin(configs)
     }
-
-    @Bean
-    fun consumerFactory(): DefaultKafkaConsumerFactory<String, String> {
-        val props = mapOf(
-            ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG to "localhost:9092",
-            ConsumerConfig.GROUP_ID_CONFIG to "group1",
-            ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG to StringDeserializer::class.java,
-            ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG to StringDeserializer::class.java
-        )
-        return DefaultKafkaConsumerFactory(props)
-    }
 }
 
