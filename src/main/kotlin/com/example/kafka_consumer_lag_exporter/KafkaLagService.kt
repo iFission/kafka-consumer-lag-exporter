@@ -22,27 +22,31 @@ class KafkaLagService(
     fun exportLagMetrics() {
         val consumerGroups = getConsumerGroups()
 
-      consumerGroups.forEach { consumerGroup ->
-        val topicPartitions = getTopicPartitions(consumerGroup)
-        topicPartitions.forEach { (tp, consumerOffset) ->
-            val latestOffset = getLatestOffset(tp)
-            val lag = max((latestOffset - consumerOffset), 0).toDouble()
+        consumerGroups.forEach { consumerGroup ->
+            val partitionsCommittedOffsets = getTopicPartitionsCommittedOffsets(consumerGroup)
+            val topicPartitions = partitionsCommittedOffsets.keys
+            val partitionsLatestOffsets = getTopicPartitionsLatestOffsets(topicPartitions)
 
-            val key = "${consumerGroup}_${tp.topic()}_${tp.partition()}"
+            topicPartitions.forEach { topicPartition ->
+                val committedOffset = partitionsCommittedOffsets[topicPartition] ?: 0L
+                val latestOffset = partitionsLatestOffsets[topicPartition] ?: 0L
+                val lag = max((latestOffset - committedOffset), 0).toDouble()
 
-            lagMap[key] = lag
+                val key = "${consumerGroup}_${topicPartition.topic()}_${topicPartition.partition()}"
 
-            meterRegistry.gauge(
-                "kafka.consumergroup.lag",
-                listOf(
-                    Tag.of("consumergroup", consumerGroup),
-                    Tag.of("topic", tp.topic()),
-                    Tag.of("partition", tp.partition().toString())
-                ),
-                lagMap,
-                { it[key] ?: 0.0 }
-            )
-          }
+                lagMap[key] = lag
+
+                meterRegistry.gauge(
+                    "kafka.consumergroup.lag",
+                    listOf(
+                        Tag.of("consumergroup", consumerGroup),
+                        Tag.of("topic", topicPartition.topic()),
+                        Tag.of("partition", topicPartition.partition().toString())
+                    ),
+                    lagMap,
+                    { it[key] ?: 0.0 }
+                )
+            }
         }
     }
 
@@ -52,18 +56,17 @@ class KafkaLagService(
             .map { it.groupId() }
     }
 
-    private fun getTopicPartitions(consumerGroup: String): Map<TopicPartition, Long> {
+    private fun getTopicPartitionsCommittedOffsets(consumerGroup: String): Map<TopicPartition, Long> {
         val offsets = adminClient.listConsumerGroupOffsets(consumerGroup).partitionsToOffsetAndMetadata()
             .get(10, TimeUnit.SECONDS)
         return offsets.mapValues { (_, offsetAndMetadata) -> offsetAndMetadata.offset() }
     }
 
-    private fun getLatestOffset(topicPartition: TopicPartition): Long {
-        val offsets = adminClient.listOffsets(
-            mapOf(topicPartition to org.apache.kafka.clients.admin.OffsetSpec.latest())
-        ).all().get()
+    private fun getTopicPartitionsLatestOffsets(topicPartitions: Set<TopicPartition>): Map<TopicPartition, Long> {
+        return adminClient.listOffsets(
+            topicPartitions.associateWith { org.apache.kafka.clients.admin.OffsetSpec.latest() }
+        ).all().get(10, TimeUnit.SECONDS).mapValues { (_, offsetResult) -> offsetResult.offset() }
 
-        return offsets[topicPartition]?.offset() ?: 0L
     }
 }
 
